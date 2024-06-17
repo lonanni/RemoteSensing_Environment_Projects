@@ -1,1 +1,1 @@
-This Repository contains codes and examples to investigate water quality trhough remote sensing
+This Repository contains codes and examples to investigate water quality through remote sensing
