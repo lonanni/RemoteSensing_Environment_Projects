@@ -183,7 +183,135 @@ class EarthEngineDownloader:
                     scale=self.scale_dict[collection_name],
                     region=self.region
                 )
+def mask_from_bitmask(bitmask, mask_type):
+    '''
+    Converts an earth engine QA bitmask to a boolean array of ``mask_type`` pixels.
+    Bitmask array conversion from https://stackoverflow.com/questions/22227595/convert-integer-to-binary-array-with-suitable-padding
 
+    Args:
+        bitmask (np.ndarray): ``shape(pix_x, pix_y)``
+        mask_type (str): String specifying kind of mask to return. Can be ``water``, ``cloud``, or ``shadow``.
+
+    Returns:
+        Boolean mask with shape ``shape(pix_x, pix_y)`` indicating pixels of ``mask_type.
+    '''
+
+    idx_dict = {
+        "water" : 8,
+        "cloud" : 12,
+        "shadow" : 11,
+    }
+
+    # number of bits to convert bitmask to
+    m = 16
+    # Function to convert an integer to a string binary representation
+    to_str_func = np.vectorize(lambda x: np.binary_repr(x).zfill(m))
+    # Calculte binary representations
+    strs = to_str_func(bitmask)
+    # Create empty array for the bitmask
+    bitmask_bits = np.zeros(list(bitmask.shape) + [m], dtype=np.int8)
+    # Iterate over all m  bits
+    for bit_ix in range(0, m):
+        # Get the bits
+      fetch_bit_func = np.vectorize(lambda x: x[bit_ix] == '1')
+        # Store the bits
+      bitmask_bits[:, :, bit_ix] = fetch_bit_func(strs).astype("int8")
+
+    # The bitmask is stored in bit 7 (index 15-7=8).
+    bool_bitmask = bitmask_bits[:, :, idx_dict[mask_type]] == 1
+
+    return bool_bitmask
+
+def get_water_depth(bgrnir):
+    '''
+   Computes the depth of the water from an image in 4 bands
+
+    Args:
+        bgrnir (array): image in 4 bands (blue, green, red, nir)
+
+    Returns:
+        water depth, water mask
+    '''
+    bgrnir = (bgrnir.astype(np.float32))
+    water_mask = mask_from_bitmask(bgrnir[:, :, 3].astype(np.int64), 'water') 
+
+    depth = np.zeros_like(bgrnir[:, :, 0])
+    depth[water_mask] = ((np.log(bgrnir[:, :, 0][water_mask])/np.log(bgrnir[:, :, 1][water_mask])))
+
+    return depth, water_mask
+
+def scale_im(reader):
+    '''
+    Scales the image colours in the different bands
+    Args:
+        reader (array): image in different bands
+
+    Returns:
+        scaled image - RGB image
+    '''
+    red = reader.read(3)
+    green = reader.read(2)
+    blue = reader.read(1)
+
+
+    scale = lambda x : (x*0.0000275) - 0.2
+
+
+    return np.dstack([scale(red), scale(green), scale(blue)]) * 3
+
+
+def create_color_map(hex_list):
+    '''
+    Produces a costum colormap for a RGB image
+    Args:
+        hex_list (list): list of str with HEX values
+
+    Returns:
+        color map
+    '''
+    num_colors = len(hex_list)
+    color_positions = np.linspace(0, 1, num_colors)
+    color_map_dict = {'red': [], 'green': [], 'blue': []}
+
+    for color_index, hex_color in enumerate(hex_list):
+      rgb_color = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+      color_map_dict['red'].append((color_positions[color_index], rgb_color[0] / 255, rgb_color[0] / 255))
+      color_map_dict['green'].append((color_positions[color_index], rgb_color[1] / 255, rgb_color[1] / 255))
+      color_map_dict['blue'].append((color_positions[color_index], rgb_color[2] / 255, rgb_color[2] / 255))
+
+    color_map = LinearSegmentedColormap('custom_color_map', color_map_dict)
+    return color_map
+
+
+
+
+
+import math
+
+def calculate_square_corners(center_latitude, center_longitude, distance_around_center):
+    # Convert center latitude and longitude to radians
+    center_lat_rad = math.radians(center_latitude)
+    center_lon_rad = math.radians(center_longitude)
+
+    # Convert distance to radians of arc length
+    distance_km = distance_around_center / 1000  # Convert distance to kilometers
+    radius_earth_km = 6371  # Average radius of the Earth in kilometers
+    arc_length_rad = distance_km / radius_earth_km
+
+    # Calculate latitude and longitude differences
+    delta_lat = math.degrees(arc_length_rad)
+    delta_lon = math.degrees(arc_length_rad / math.cos(center_lat_rad))
+
+    # Calculate top left corner coordinates
+    top_left_lat = center_latitude + delta_lat / 2
+    top_left_lon = center_longitude - delta_lon / 2
+
+    # Calculate bottom right corner coordinates
+    bottom_right_lat = center_latitude - delta_lat / 2
+    bottom_right_lon = center_longitude + delta_lon / 2
+
+    # Return the coordinates as a tuple
+    return (top_left_lat, top_left_lon, bottom_right_lat, bottom_right_lon)
 class MakeTrainingData_Water:
     '''
     A class to make training data for the water mask and the depth of the sea.
