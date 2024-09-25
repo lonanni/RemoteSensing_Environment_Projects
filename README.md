@@ -1,1 +1,2 @@
-This Repository contains codes and examples to investigate water and air quality through remote sensing, data analysis, and ML
+This Repository contains codes and examples to investigate satellite images, together with water and air quality datasets through remote sensing, data analysis, and ML.
+TinyML applications are also developed based on these models.
