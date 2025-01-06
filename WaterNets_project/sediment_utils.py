@@ -25,7 +25,7 @@ def scale_im(reader):
     scale = lambda x : (x*0.0000275) - 0.2
     return np.dstack([scale(red), scale(green), scale(blue)]) * 5
     
-def run_functions(path_main_directory, function_to_run):
+def run_functions(path_main_directory, function_to_run, scaler, nn):
     if not os.path.isdir(path_main_directory):
         return "Main directory does not exist."
     prediction_count = 0  # To count number of predictions plotted
@@ -56,7 +56,7 @@ def run_functions(path_main_directory, function_to_run):
                     RAW_reader.read(6),
                 ])
 
-                function_to_run(raw_image, RAW_reader, image_shape)
+                function_to_run(raw_image, RAW_reader, image_shape, scaler, nn)
                 prediction_count += 1
                 
 def plot_prediction(raw_image, RAW_reader, image_shape, scaler, nn):
