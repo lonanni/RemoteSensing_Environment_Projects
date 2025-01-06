@@ -59,14 +59,14 @@ def run_functions(path_main_directory, function_to_run):
                 function_to_run(raw_image, RAW_reader, image_shape)
                 prediction_count += 1
                 
-def plot_prediction(raw_image, RAW_reader, image_shape):
+def plot_prediction(raw_image, RAW_reader, image_shape, scaler, nn):
       
   test_image = scale_im(RAW_reader)
 
   # Resize the images
-  test_image_water = scaler_BCLW.transform(raw_image.reshape((image_shape[0], image_shape[1], 6)))
+  test_image_water = scaler.transform(raw_image.reshape((image_shape[0], image_shape[1], 6)))
 
-  predictions = BCLWMasks(test_image_water.reshape((np.prod(image_shape), 6)))
+  predictions = nn(test_image_water.reshape((np.prod(image_shape), 6)))
   predicted_classes = np.argmax(predictions, axis=1)
 
   # Plotting
