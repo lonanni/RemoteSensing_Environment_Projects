@@ -3,7 +3,7 @@ import rasterio
 import os
 import matplotlib.pyplot as plt
 from matplotlib import colors
-
+from scipy.stats import linregress, binned_statistic
 
 class SimpleScaler:
     def fit(self, X):
@@ -26,7 +26,87 @@ class Sediment():
       self.red = reader.read(3)
       self.green = reader.read(2)
       self.blue = reader.read(1)
+      
+class Sediment_dg():
+    """
+    As Sediment, this time, we deglint the signal in the different bands
+    """
+    def __init__(self, reader, water_mask):
+      self.reader = reader
 
+      self.nir = reader.read(4)
+      self.red = reader.read(3)
+      self.green = reader.read(2)
+      self.blue = reader.read(1)
+
+      result_B = linregress(self.nir[:,:100].flatten(), self.blue[:,:100].flatten())
+      result_G = linregress(self.nir[:,:100].flatten(), self.green[:,:100].flatten())
+      result_R = linregress(self.nir[:,:100].flatten(), self.red[:,:100].flatten())
+
+      self.NIR_dg = self.nir - (self.nir  - np.min(self.nir))
+
+      self.R_dg = self.red-result_R.slope* (self.nir  - np.min(self.nir))
+      self.G_dg = self.green-result_G.slope* (self.nir  - np.min(self.nir))
+      self.B_dg = self.blue-result_B.slope* (self.nir  - np.min(self.nir))
+
+      self.water_mask = water_mask
+
+    def NDTI(self, ):
+      """
+     **Normalized Difference Turbidity Index (NDTI)**
+     **Formula**: \((Red - Green) / (Red + Green)\)
+     **Description**: NDTI leverages the fact that sediment-laden water typically has higher reflectance in the red band and lower in the green band compared to clear water.
+     **Application**: Higher NDTI values generally indicate higher turbidity levels, which can be associated with surface sediments.
+
+
+      """
+      NDTI_img = (self.R_dg - self.G_dg) / (self.R_dg + self.G_dg)
+      img = np.where(self.water_mask == 1, NDTI_img, np.nan)
+      return img
+
+    def turbidity_ratio(self, ):
+
+      """
+      Turbidity Ratio
+      - **Formula**: \(Red / Green\)
+      - **Description**: Similar to NDTI, the Red/Green ratio can be used directly to assess the turbidity. Higher ratios suggest more sediment.
+      - **Application**: This ratio is simple and effective in identifying sediment concentrations in water.
+
+      """
+      tr_img = self.R_dg / self.G_dg
+      img = np.where(self.water_mask == 1, tr_img, np.nan)
+      return img
+
+    def NDSSI_nir(self, ):
+      """
+      ### Normalized Difference Suspended Sediment Index (NDSSI)
+        - **Formula**: \((Green - SWIR) / (Green + SWIR)\)
+        - **Description**: This index contrasts the reflectance in the green band (where water with sediment has higher reflectance) against the SWIR band (where sediment is more absorbent).
+        - **Application**: NDSSI can help differentiate between clear water and water with suspended sediments.
+
+      """
+      NDSSI_img = (self.G_dg - self.NIR_dg) / (self.G_dg + self.NIR_dg)
+      img = np.where(self.water_mask == 1, NDSSI_img, np.nan)
+      return img
+
+    def TSM(self, ):
+      """
+      ### TOTAL SUSPENDED SEDIMENT (tsm)
+
+      """
+      TSM_img = 3957*(((self.G_dg + self.R_dg)*0.001) / 2)*1.6436
+      img = np.where(self.water_mask == 1, TSM_img, np.nan)
+      return img
+
+    def SPM(self, ):
+      """
+      ### Suspended Particulate Model
+
+      """
+      SPM_ind = 2.26*(self.R_dg/self.G_dg)**3 - 5.42 * (self.R_dg/self.G_dg)**2 + 5.58 * (self.R_dg/self.G_dg) - 0.72
+      SPM_img = 10**SPM_ind - 1.43
+      img = np.where(self.water_mask == 1, SPM_ind, np.nan)
+      return img
 
     def NDTI(self, prediction):
       """
@@ -159,9 +239,9 @@ def plot_prediction(raw_image, RAW_reader, image_shape, scaler, nn):
   
 def plot_sediment(raw_image, RAW_reader, image_shape, scaler, nn):
 
-  test_image_water = scaler_BCLW.transform(raw_image.reshape((image_shape[0], image_shape[1], 6)))
+  test_image_water = scaler.transform(raw_image.reshape((image_shape[0], image_shape[1], 6)))
 
-  predictions = BCLWMasks(test_image_water.reshape((np.product(image_shape), 6)))
+  predictions = nn(test_image_water.reshape((np.product(image_shape), 6)))
   predicted_classes = np.argmax(predictions, axis=1)
 
   rgb_image  = scale_im(RAW_reader)
@@ -220,6 +300,66 @@ def plot_sediment(raw_image, RAW_reader, image_shape, scaler, nn):
   # Close the figure after displaying it
   plt.close()
 
-  # Increment the prediction count
-  prediction_count += 1
+def plot_sediment_dg(raw_image, RAW_reader, image_shape, scaler, nn):
+
+  test_image_water = scaler.transform(raw_image.reshape((image_shape[0], image_shape[1], 6)))
+
+  predictions = nn(test_image_water.reshape((np.product(image_shape), 6)))
+  predicted_classes = np.argmax(predictions, axis=1)
+  water_mask = predictions[:,1]
+  water_mask = np.where(water_mask > 0.85, 1, 0)
+  rgb_image  = scale_im(RAW_reader)
+  # Plotting
+  fig, ax = plt.subplots(2, 3, figsize=(12,6.5))
+  ax[0, 0].imshow(rgb_image)
+  ax[0, 0].title.set_text('RGB image')
+
+
+  TSM_img = Sediment_dg(RAW_reader, water_mask.reshape((image_shape[0], image_shape[1]))).TSM()
+
+  im0 = ax[0, 1].imshow(TSM_img, cmap="YlGnBu_r")
+  cbar = fig.colorbar(im0, pad=0.05, fraction=0.046)
+  ax[0, 1].title.set_text('TSM')
+
+  ####
+  NDSSI_img = Sediment_dg(RAW_reader, water_mask.reshape((image_shape[0], image_shape[1]))).NDSSI_nir()
+
+  im0 = ax[0, 2].imshow(NDSSI_img, cmap="YlGnBu_r")
+  cbar = fig.colorbar(im0, pad=0.05, fraction=0.046)
+  ax[0, 2].title.set_text('NDSSI nir')
+
+  ####
+  turbidity_ratio_img = Sediment_dg(RAW_reader, water_mask.reshape((image_shape[0], image_shape[1]))).turbidity_ratio()
+
+  im0 = ax[1, 0].imshow(turbidity_ratio_img, cmap="YlGnBu_r")
+  cbar = fig.colorbar(im0, pad=0.05, fraction=0.046)
+  ax[1, 0].title.set_text('turbidity ratio')
+
+  ####
+
+
+  NDTI_img = Sediment_dg(RAW_reader, water_mask.reshape((image_shape[0], image_shape[1]))).NDTI()
+
+  im0 = ax[1, 1].imshow(NDTI_img, cmap="YlGnBu_r")
+  cbar = fig.colorbar(im0, pad=0.05, fraction=0.046)
+  ax[1, 1].title.set_text('NDTI')
+
+  ####
+
+
+  SPM_img = Sediment_dg(RAW_reader, water_mask.reshape((image_shape[0], image_shape[1]))).SPM()
+
+  im0 = ax[1, 2].imshow(SPM_img, cmap="YlGnBu_r")
+  cbar = fig.colorbar(im0, pad=0.05, fraction=0.046)
+  ax[1, 2].title.set_text('SPM')
+
+  ####
+
+  plt.show()
+
+  # Close the figure after displaying it
+  plt.close()
+
+
+
 
