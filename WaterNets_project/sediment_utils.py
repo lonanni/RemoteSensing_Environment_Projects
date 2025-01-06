@@ -16,6 +16,7 @@ class SimpleScaler:
     def fit_transform(self, X):
         self.fit(X)
         return self.transform(X)
+        
 class Sediment():
     def __init__(self, reader):
       self.reader = reader
@@ -26,6 +27,65 @@ class Sediment():
       self.red = reader.read(3)
       self.green = reader.read(2)
       self.blue = reader.read(1)
+
+
+    def NDTI(self, prediction):
+      """
+     - **Normalized Difference Turbidity Index (NDTI)**
+     - **Formula**: 
+     - **Description**: NDTI leverages the fact that sediment-laden water typically has higher reflectance in the red band and lower in the green band compared to clear water.
+     - **Application**: Higher NDTI values generally indicate higher turbidity levels, which can be associated with surface sediments.
+     - **Paper**: https://www.researchgate.net/figure/Normalized-difference-turbidity-index-NDTI-in-Sentinel-2-images-with-synoptical-clear_fig2_364947274
+
+      """
+      NDTI_img = (self.red - self.green) / (self.red + self.green)
+      img = np.where(prediction == 1, NDTI_img, np.nan)
+      return img
+
+    def turbidity_ratio(self, prediction):
+
+      """
+      Turbidity Ratio
+      - **Formula**: 
+      - **Description**: Similar to NDTI, the Red/Green ratio can be used directly to assess the turbidity. Higher ratios suggest more sediment.
+      - **Application**: This ratio is simple and effective in identifying sediment concentrations in water.
+      https://developers.arcgis.com/python/latest/samples/river-turbidity-estimation-using-sentinel2-data-/#:~:text=Normalized%20difference%20turbidity%20index&text=It%20uses%20the%20phenomenon%20that,of%20red%20spectrum%20also%20increases.
+      """
+      tr_img = self.red / self.green
+      img = np.where(prediction == 1, tr_img, np.nan)
+      return img
+
+    def NDSSI_nir(self, prediction):
+      """
+      ### Normalized Difference Suspended Sediment Index (NDSSI)
+        - **Formula**: 
+        - **Description**: This index contrasts the reflectance in the green band (where water with sediment has higher reflectance) against the SWIR band (where sediment is more absorbent).
+        - **Application**: NDSSI can help differentiate between clear water and water with suspended sediments.
+        - **Paper**: https://iopscience.iop.org/article/10.1088/1755-1315/98/1/012058/pdf
+      """
+      NDSSI_img = (self.green - self.nir) / (self.green + self.nir)
+      img = np.where(prediction == 1, NDSSI_img, np.nan)
+      return img
+
+    def TSM(self, prediction):
+      """
+      ### TOTAL SUSPENDED SEDIMENT (tsm)
+      - *Description**: Total suspended sediment (TSS) is a water quality parameter that is used to understand sediment transport, aquatic ecosystem health, and engineering problems. The TSS method was designed for the wastewater industry, presumably for samples collected after a settling step at a wastewater treatment facility.
+      - **Papers**:https://www.mdpi.com/2076-3417/11/15/7082#:~:text=Total%20suspended%20sediment%20(TSS)%20is,ecosystem%20health%2C%20and%20engineering%20problems. https://caltestlabs.com/analytical-services/priority-pollutants/inorganic-methods/tssandssc/ https://www.sciencedirect.com/topics/agricultural-and-biological-sciences/suspended-sediment
+      """
+      TSM_img = 3957*(((self.green + self.red)*0.001) / 2)*1.6436
+      img = np.where(prediction == 1, TSM_img, np.nan)
+      return img
+
+    def SPM(self, prediction):
+      """
+      ### Suspended Particulate Model
+      - **Paper**: https://www.sciencedirect.com/topics/biochemistry-genetics-and-molecular-biology/suspended-particulate-matter#:~:text=SePM%20is%20a%20complex%20mixture,et%20al.%2C%202021a).
+      """
+      SPM_ind = 2.26*(self.red/self.green)**3 - 5.42 * (self.red/self.green)**2 + 5.58 * (self.red/self.green) - 0.72
+      SPM_img = 10**SPM_ind - 1.43
+      img = np.where(prediction == 1, SPM_ind, np.nan)
+      return img
       
 class Sediment_dg():
     """
